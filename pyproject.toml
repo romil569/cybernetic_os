@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cybernetic-os"
+version = "0.1.0"
+description = "Local-first multimodal spatial computer interface"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+  "opencv-contrib-python==4.11.0.86",
+  "mediapipe==0.10.21",
+  "numpy==1.26.4",
+  "psutil==6.1.1",
+  "Pillow==11.1.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cybernetic OS — Spatial 3D</title>
+  <meta name="description" content="Interactive 3D spatial computing surface for the Cybernetic OS gesture-driven interface">
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0a0e13;
+      --panel: #111920e8;
+      --accent: #4cd8c4;
+      --accent-dim: #236b69;
+      --text: #e2f0ec;
+      --text-dim: #8ca8a4;
+      --warn: #f0a050;
+      --grid-a: #1a3842;
+      --grid-b: #132830;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { overflow: hidden; }
+    canvas#scene { display: block; width: 100vw; height: 100vh; }
+
+    /* Status panel — top left */
+    #status {
+      position: absolute; top: 16px; left: 18px;
+      background: var(--panel); border-left: 2px solid var(--accent);
+      padding: 14px 18px; min-width: 260px; border-radius: 0 4px 4px 0;
+      backdrop-filter: blur(8px);
+    }
+    #status h1 { font-size: 15px; letter-spacing: .5px; font-weight: 600; margin-bottom: 10px; color: var(--accent); }
+    #status .row { display: flex; justify-content: space-between; margin: 4px 0; font-size: 12px; }
+    #status .label { color: var(--text-dim); text-transform: uppercase; letter-spacing: .4px; }
+    #status .value { color: var(--text); font-variant-numeric: tabular-nums; }
+
+    /* Gesture state indicator */
+    #gesture-indicator {
+      position: absolute; top: 16px; right: 18px;
+      background: var(--panel); border-right: 2px solid var(--accent);
+      padding: 14px 18px; min-width: 200px; border-radius: 4px 0 0 4px;
+      backdrop-filter: blur(8px); text-align: right;
+    }
+    #gesture-indicator h2 { font-size: 13px; color: var(--accent); margin-bottom: 8px; font-weight: 600; letter-spacing: .4px; }
+    #gesture-name { font-size: 20px; font-weight: 700; margin: 6px 0; transition: color .2s; }
+    #gesture-state { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; }
+    .gesture-active { color: var(--warn) !important; }
+
+    /* Telemetry bar — bottom left */
+    #telemetry {
+      position: absolute; bottom: 16px; left: 18px;
+      background: var(--panel); border-left: 2px solid var(--accent-dim);
+      padding: 10px 16px; min-width: 220px; border-radius: 0 4px 4px 0;
+      font-size: 11px; backdrop-filter: blur(8px);
+    }
+    #telemetry h3 { font-size: 11px; color: var(--accent-dim); margin-bottom: 6px; letter-spacing: .5px; text-transform: uppercase; }
+    #telemetry .metric { display: flex; justify-content: space-between; margin: 2px 0; }
+    #telemetry .metric-label { color: var(--text-dim); }
+    #telemetry .metric-value { color: var(--text); font-variant-numeric: tabular-nums; }
+
+    /* Controls — bottom right */
+    #controls {
+      position: absolute; right: 18px; bottom: 16px;
+      display: flex; gap: 6px; flex-wrap: wrap; max-width: 320px; justify-content: flex-end;
+    }
+    button {
+      background: #17242ce0; color: var(--text); border: 1px solid var(--accent-dim);
+      border-radius: 4px; padding: 8px 12px; font: inherit; font-size: 11px;
+      cursor: pointer; transition: all .15s ease; text-transform: uppercase; letter-spacing: .5px;
+    }
+    button:hover, button:focus {
+      background: #254743; border-color: var(--accent);
+      outline: none; box-shadow: 0 0 8px #4cd8c440;
+    }
+    button.active { background: #1a4a44; border-color: var(--accent); }
+  </style>
+</head>
+<body>
+  <canvas id="scene" aria-label="Interactive 3D object space"></canvas>
+
+  <aside id="status">
+    <h1>CYBERNETIC OS / 3D SPACE</h1>
+    <div class="row"><span class="label">Selected</span><span class="value" id="selected">none</span></div>
+    <div class="row"><span class="label">Mode</span><span class="value" id="mode">orbit</span></div>
+    <div class="row"><span class="label">Position</span><span class="value" id="position">0, 0, 0</span></div>
+    <div class="row"><span class="label">Scale</span><span class="value" id="scale-display">1.00</span></div>
+    <div class="row"><span class="label">Bridge</span><span class="value" id="bridge-status">connecting…</span></div>
+  </aside>
+
+  <aside id="gesture-indicator">
+    <h2>GESTURE STATE</h2>
+    <div id="gesture-name">IDLE</div>
+    <div id="gesture-state">waiting for input</div>
+    <div style="margin-top:8px; font-size:11px;">
+      <div class="row" style="display:flex;justify-content:space-between;"><span class="label" style="color:var(--text-dim);">Confidence</span><span id="gesture-conf" style="font-variant-numeric:tabular-nums;">—</span></div>
+      <div class="row" style="display:flex;justify-content:space-between;margin-top:2px;"><span class="label" style="color:var(--text-dim);">Sequence</span><span id="gesture-seq" style="font-variant-numeric:tabular-nums;">0</span></div>
+    </div>
+  </aside>
+
+  <aside id="telemetry">
+    <h3>Live Telemetry</h3>
+    <div class="metric"><span class="metric-label">Frame Rate</span><span class="metric-value" id="t-fps">—</span></div>
+    <div class="metric"><span class="metric-label">Render Time</span><span class="metric-value" id="t-render">—</span></div>
+    <div class="metric"><span class="metric-label">Objects</span><span class="metric-value" id="t-objects">3</span></div>
+    <div class="metric"><span class="metric-label">Triangles</span><span class="metric-value" id="t-triangles">—</span></div>
+    <div class="metric"><span class="metric-label">Draw Calls</span><span class="metric-value" id="t-draws">—</span></div>
+  </aside>
+
+  <div id="controls">
+    <button data-action="select" title="Click to select object">Select</button>
+    <button data-action="move" title="Translate selected object">Move</button>
+    <button data-action="rotate" title="Rotate selected object">Rotate</button>
+    <button data-action="scale" title="Scale selected object">Scale</button>
+    <button data-action="inspect" title="Show object details">Inspect</button>
+    <button data-action="reset" title="Reset to default view">Reset</button>
+  </div>
+
+  <script type="module">
+    import * as THREE from './vendor/three.module.js';
+
+    // --- Renderer ---
+    const canvas = document.getElementById('scene');
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.2;
+
+    // --- Scene ---
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color('#0a0e13');
+    scene.fog = new THREE.FogExp2('#0a0e13', 0.035);
+
+    // --- Camera ---
+    const camera = new THREE.PerspectiveCamera(48, 1, 0.1, 100);
+    camera.position.set(0, 1.6, 6);
+
+    // --- Lighting ---
+    const ambient = new THREE.HemisphereLight('#b5fff3', '#14222b', 1.2);
+    scene.add(ambient);
+    const key = new THREE.DirectionalLight('#ffd194', 2.2);
+    key.position.set(3, 5, 4);
+    scene.add(key);
+    const rim = new THREE.DirectionalLight('#4cd8c4', 0.8);
+    rim.position.set(-3, 2, -4);
+    scene.add(rim);
+
+    // --- Grid ---
+    const grid = new THREE.GridHelper(20, 20, '#1a3842', '#132830');
+    grid.position.y = -1.35;
+    scene.add(grid);
+
+    // --- Objects ---
+    const objects = [];
+    const originalPositions = [];
+    const originalScales = [];
+
+    function addObject(geometry, color, pos, name) {
+      const material = new THREE.MeshStandardMaterial({
+        color, metalness: 0.5, roughness: 0.22,
+        envMapIntensity: 1.0,
+      });
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.copy(pos);
+      mesh.userData.name = name;
+      scene.add(mesh);
+      objects.push(mesh);
+      originalPositions.push(pos.clone());
+      originalScales.push(mesh.scale.clone());
+      return mesh;
+    }
+
+    addObject(new THREE.IcosahedronGeometry(0.75, 2), '#4cd8c4', new THREE.Vector3(-2.2, 0, 0), 'Signal Core');
+    addObject(new THREE.BoxGeometry(1.15, 1.15, 1.15), '#efa55e', new THREE.Vector3(0, 0, 0), 'Control Cube');
+    addObject(new THREE.TorusKnotGeometry(0.54, 0.16, 128, 16), '#8b9fff', new THREE.Vector3(2.2, 0, 0), 'Orbital Knot');
+
+    // --- Raycaster ---
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+    let selected = null;
+
+    // --- Orbit state ---
+    let drag = false;
+    let previous = { x: 0, y: 0 };
+    let orbit = { yaw: 0, pitch: 0 };
+
+    // --- DOM references ---
+    const selectedEl = document.getElementById('selected');
+    const modeEl = document.getElementById('mode');
+    const positionEl = document.getElementById('position');
+    const scaleEl = document.getElementById('scale-display');
+    const bridgeEl = document.getElementById('bridge-status');
+    const gestureNameEl = document.getElementById('gesture-name');
+    const gestureStateEl = document.getElementById('gesture-state');
+    const gestureConfEl = document.getElementById('gesture-conf');
+    const gestureSeqEl = document.getElementById('gesture-seq');
+    const tFps = document.getElementById('t-fps');
+    const tRender = document.getElementById('t-render');
+    const tObjects = document.getElementById('t-objects');
+    const tTriangles = document.getElementById('t-triangles');
+    const tDraws = document.getElementById('t-draws');
+
+    // --- Resize ---
+    function resize() {
+      const w = innerWidth, h = innerHeight;
+      renderer.setSize(w, h, false);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+    }
+    addEventListener('resize', resize);
+    resize();
+
+    // --- Picking ---
+    function pick(event) {
+      const rect = canvas.getBoundingClientRect();
+      pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(pointer, camera);
+      const hit = raycaster.intersectObjects(objects)[0];
+      if (hit) {
+        selected = hit.object;
+        updateSelection();
+      }
+    }
+
+    function updateSelection() {
+      if (!selected) return;
+      selectedEl.textContent = selected.userData.name;
+      const p = selected.position;
+      positionEl.textContent = `${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)}`;
+      scaleEl.textContent = selected.scale.x.toFixed(2);
+    }
+
+    // --- Input ---
+    canvas.addEventListener('pointerdown', e => { drag = true; previous = { x: e.clientX, y: e.clientY }; pick(e); });
+    addEventListener('pointerup', () => drag = false);
+    addEventListener('pointermove', e => {
+      if (!drag) return;
+      const dx = e.clientX - previous.x, dy = e.clientY - previous.y;
+      previous = { x: e.clientX, y: e.clientY };
+      orbit.yaw -= dx * 0.008;
+      orbit.pitch = Math.max(-0.7, Math.min(0.7, orbit.pitch - dy * 0.006));
+    });
+
+    // Mouse wheel zoom
+    canvas.addEventListener('wheel', e => {
+      e.preventDefault();
+      const zoomSpeed = 0.3;
+      const distance = camera.position.length();
+      const factor = 1 + (e.deltaY > 0 ? zoomSpeed : -zoomSpeed) * 0.1;
+      const newDist = Math.max(2, Math.min(15, distance * factor));
+      camera.position.normalize().multiplyScalar(newDist);
+    }, { passive: false });
+
+    // --- Commands ---
+    function command(value) {
+      const object = selected || objects[1];
+      const step = Math.PI / 12;
+
+      switch (value) {
+        case 'select':
+          selected = object;
+          updateSelection();
+          modeEl.textContent = 'select';
+          break;
+        case 'move':
+          object.position.x += 0.22;
+          modeEl.textContent = 'translate';
+          break;
+        case 'rotate':
+        case 'rotate_right':
+          object.rotation.y += step;
+          modeEl.textContent = 'rotate';
+          break;
+        case 'rotate_left':
+          object.rotation.y -= step;
+          modeEl.textContent = 'rotate';
+          break;
+        case 'rotate_up':
+          object.rotation.x -= step * 0.5;
+          modeEl.textContent = 'rotate';
+          break;
+        case 'rotate_down':
+          object.rotation.x += step * 0.5;
+          modeEl.textContent = 'rotate';
+          break;
+        case 'scale':
+          object.scale.multiplyScalar(1.12);
+          modeEl.textContent = 'scale';
+          break;
+        case 'inspect':
+          const info = `${object.userData.name}: pos(${object.position.toArray().map(v => v.toFixed(1)).join(', ')}) rot(${object.rotation.toArray().slice(0,3).map(v => (v*180/Math.PI).toFixed(0)+'°').join(', ')})`;
+          modeEl.textContent = info;
+          break;
+        case 'reset':
+        case 'reset_view':
+          orbit = { yaw: 0, pitch: 0 };
+          objects.forEach((obj, i) => {
+            obj.position.copy(originalPositions[i]);
+            obj.scale.copy(originalScales[i]);
+            obj.rotation.set(0, 0, 0);
+          });
+          modeEl.textContent = 'orbit';
+          break;
+        case 'select_3d':
+          if (selected) {
+            selected.material.emissive.set('#4cd8c4');
+            selected.material.emissiveIntensity = 0.3;
+            setTimeout(() => { if (selected) selected.material.emissiveIntensity = 0; }, 600);
+          }
+          break;
+      }
+      updateSelection();
+    }
+
+    document.querySelectorAll('button').forEach(btn =>
+      btn.addEventListener('click', () => command(btn.dataset.action))
+    );
+
+    // --- Gesture bridge ---
+    let sequence = -1;
+    let lastGesture = 'idle';
+
+    async function bridge() {
+      try {
+        const response = await fetch('/api/state');
+        const state = await response.json();
+        bridgeEl.textContent = 'connected';
+        if (state.sequence !== sequence) {
+          sequence = state.sequence;
+          lastGesture = state.command || 'idle';
+          command(state.command);
+
+          // Update gesture display
+          gestureNameEl.textContent = lastGesture.replace(/_/g, ' ').toUpperCase();
+          gestureNameEl.classList.add('gesture-active');
+          gestureStateEl.textContent = 'received from pipeline';
+          gestureSeqEl.textContent = sequence;
+          setTimeout(() => gestureNameEl.classList.remove('gesture-active'), 400);
+        }
+      } catch (_) {
+        bridgeEl.textContent = 'polling…';
+      }
+      setTimeout(bridge, 300);
+    }
+    bridge();
+
+    // --- Telemetry ---
+    let frameCount = 0;
+    let lastTime = performance.now();
+    let fpsSamples = [];
+
+    function updateTelemetry() {
+      const info = renderer.info;
+      tObjects.textContent = objects.length;
+      tTriangles.textContent = info.render.triangles.toLocaleString();
+      tDraws.textContent = info.render.calls;
+
+      frameCount++;
+      const now = performance.now();
+      const delta = now - lastTime;
+      if (delta >= 1000) {
+        const fps = (frameCount * 1000 / delta).toFixed(1);
+        tFps.textContent = fps + ' fps';
+        tRender.textContent = (delta / frameCount).toFixed(1) + ' ms';
+        fpsSamples.push(parseFloat(fps));
+        frameCount = 0;
+        lastTime = now;
+      }
+    }
+
+    // --- Render loop ---
+    function render() {
+      // Orbit camera
+      const radius = camera.position.length() || 6;
+      camera.position.set(
+        Math.sin(orbit.yaw) * radius,
+        1.6 + orbit.pitch * 4,
+        Math.cos(orbit.yaw) * radius
+      );
+      camera.lookAt(0, 0, 0);
+
+      // Slow ambient rotation for signal core
+      objects[0].rotation.y += 0.004;
+      objects[0].rotation.x += 0.001;
+
+      renderer.render(scene, camera);
+      updateTelemetry();
+      requestAnimationFrame(render);
+    }
+    render();
+  </script>
+</body>
+</html>

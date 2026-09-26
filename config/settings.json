@@ -1,0 +1,14 @@
+{
+  "camera_index": 0,
+  "width": 1280,
+  "height": 720,
+  "cursor_sensitivity": 1.0,
+  "gesture_cooldown_seconds": 0.55,
+  "enable_gaze": false,
+  "gesture_bindings": {
+    "SWIPE_LEFT": "previous_module",
+    "SWIPE_RIGHT": "next_module",
+    "OPEN_PALM": "home",
+    "PINCH_START": "activate"
+  }
+}
